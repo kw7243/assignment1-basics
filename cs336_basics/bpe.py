@@ -2,6 +2,36 @@ import os
 import regex as re
 from collections import Counter, defaultdict
 
+PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
+
+
+def count_pretokens(
+    corpus: str,
+    special_tokens: list[str],
+) -> Counter[tuple[bytes, ...]]:
+
+    escaped = [
+        re.escape(token)
+        for token in sorted(set(special_tokens), key=len, reverse=True)
+    ]
+
+    chunks = (
+        re.split("|".join(escaped), corpus)
+        if escaped else [corpus]
+    )
+
+    corpus_freq = Counter()
+
+    for chunk in chunks:
+        for match in re.finditer(PAT, chunk):
+            pretok_bytes = match.group().encode("utf-8")
+            byte_tup = tuple(bytes([b]) for b in pretok_bytes)
+
+            corpus_freq[byte_tup] += 1
+
+    return corpus_freq
+
+
 def train_bpe(
     input_path: str | os.PathLike,
     vocab_size: int,
@@ -33,33 +63,14 @@ def train_bpe(
 
 
     # Step 2: Pre-tokenize the input corpus.
-    with open(input_path, "r", encoding="utf-8") as f:
-        corpus = f.read()
+    corpus_freq = kwargs.get("corpus_freq")
 
-    PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
+    if corpus_freq is None:
+        with open(input_path, "r", encoding="utf-8") as f:
+            corpus = f.read()
 
-    # Split at special-token boundaries.
-    if special_tokens:
-        escaped = [
-            re.escape(token)
-            for token in sorted(set(special_tokens), key=len, reverse=True)
-        ]
-        chunks = re.split("|".join(escaped), corpus)
-    else:
-        chunks = [corpus]
+        corpus_freq = count_pretokens(corpus, special_tokens)
 
-    corpus_freq: dict[tuple[bytes, ...], int] = {}
-
-    for chunk in chunks:
-        for match in re.finditer(PAT, chunk):
-            pretok = match.group()
-            pretok_bytes = pretok.encode("utf-8")
-
-            # Represent every byte as a separate bytes object.
-            key = tuple(bytes([b]) for b in pretok_bytes)
-
-            # Count occurrences of this pre-token.
-            corpus_freq[key] = corpus_freq.get(key, 0) + 1
 
     # Step 3: Learn BPE merges.
     # corpus_freq = {(b'c', b'a', b't'): 5}
