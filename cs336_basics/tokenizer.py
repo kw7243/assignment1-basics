@@ -4,7 +4,7 @@ import os
 
 import regex as re
 
-
+PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
 class Tokenizer:
     """
     AF(`vocab`, `merges`, `special_tokens`) = tokenizer w/ these
@@ -105,8 +105,6 @@ class Tokenizer:
         )
 
         # 2. Pre-tokenize. ["cat", "end", "dog"]
-        PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
-
         special_token_set = set(self.special_tokens)
         token_ids: list[int] = []
 
@@ -177,7 +175,77 @@ class Tokenizer:
         """
         Lazily encode a stream of strings.
         """
-        for s in iterable:
-            for token_id in self.encode(s):
-                yield token_id
+        
 
+        special_tokens = sorted(
+            set(self.special_tokens), key=len, reverse=True
+        )
+        special_token_set = set(special_tokens)
+
+        if any(not token for token in special_tokens):
+            raise ValueError("Special tokens must be nonempty")
+
+        split_pattern = (
+            re.compile("(" + "|".join(
+                re.escape(token) for token in special_tokens
+            ) + ")")
+            if special_tokens else None
+        )
+
+        # Retain enough text to detect special tokens and
+        # pre-tokens that span chunk boundaries.
+        lookahead = max(
+            (len(token) for token in special_tokens),
+            default=0
+        ) + 4
+
+        buffer = ""
+
+        for chunk in iterable:
+            buffer += chunk
+
+            cutoff = len(buffer) - lookahead
+            if cutoff <= 0:
+                continue
+
+            parts = (
+                split_pattern.split(buffer)
+                if split_pattern else [buffer]
+            )
+
+            safe_end = 0
+            offset = 0
+
+            for part in parts:
+                if not part:
+                    continue
+
+                if part in special_token_set:
+                    # A complete special token is a safe boundary.
+                    offset += len(part)
+                    if offset <= cutoff:
+                        safe_end = offset
+                    continue
+
+                # Find complete ordinary pre-tokens.
+                for match in re.finditer(PAT, part):
+                    end = offset + match.end()
+
+                    if end > cutoff:
+                        break
+
+                    # Defer whitespace-ending matches because
+                    # future text can change their boundaries.
+                    if not match.group()[-1].isspace():
+                        safe_end = end
+
+                offset += len(part)
+
+            # Encode only the stable prefix.
+            if safe_end:
+                yield from self.encode(buffer[:safe_end])
+                buffer = buffer[safe_end:]
+
+        # Process everything left at end of input.
+        if buffer:
+            yield from self.encode(buffer)
