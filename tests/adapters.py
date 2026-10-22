@@ -15,6 +15,7 @@ from cs336_basics.tokenizer import Tokenizer
 
 # Transformer
 from cs336_basics.linear import Linear
+from cs336_basics.embedding import Embedding
 
 def run_linear(
     d_in: int,
@@ -67,8 +68,16 @@ def run_embedding(
     Returns:
         Float[Tensor, "... d_model"]: Batch of embeddings returned by your Embedding layer.
     """
+    embedding = Embedding(
+        num_embeddings=vocab_size,
+        embedding_dim=d_model,
+        device=weights.device,
+        dtype=weights.dtype,
+    ) 
 
-    raise NotImplementedError
+    embedding.load_state_dict({"embedding": weights})
+
+    return embedding(token_ids)
 
 
 def run_swiglu(
