@@ -34,14 +34,11 @@ class RMSNorm(nn.Module):
 
     def forward(self, x: Int[Tensor, " ... d_model"]) -> Float[Tensor, " ... d_model"]:
         """
-        Get the embedding vector for each token ID.
-
         Args:
-            token_ids (Int[Tensor, "..."]): Token IDs with any number of dimensions.
+            x (Int[Tensor, "... d_model"]): input tensor (B,L,D)
 
         Returns:
-            Float[Tensor, "... embedding_dim"]: Embeddings with the input dimensions
-                followed by embedding_dim
+            Float[Tensor, "... d_model"]: RMSNorm(x) (B,L,D)
         """
         in_dtype = x.dtype
         x = x.to(torch.float32)
