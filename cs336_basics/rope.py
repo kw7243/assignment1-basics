@@ -43,7 +43,7 @@ class RotaryPositionalEmbedding(nn.Module):
                 token_positions: Int[Tensor, " ... seq_len"]) -> Float[Tensor, " ... seq_len d_k"]:
         """
         Args:
-            x (Int[Tensor, "... seq_len d_k"]): input tensor (ex. (B,L,D))
+            x (Float[Tensor, "... seq_len d_k"]): input tensor (ex. (B,L,D))
             token_positions (Int[Tensor, " ... seq_len"]): token positions for a batch 
                                             (diff reqs process seqs at different positions)
 
