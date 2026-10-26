@@ -24,7 +24,7 @@ class SwiGLU(nn.Module):
         self.down_proj = Linear(d_ff, d_model)
 
 
-    def forward(self, x: Int[Tensor, " ... d_model"]) -> Float[Tensor, " ... d_model"]:
+    def forward(self, x: Float[Tensor, " ... d_model"]) -> Float[Tensor, " ... d_model"]:
         """
         Args:
             x (Int[Tensor, "... d_model"]): input tensor (ex. (B,L,D))
