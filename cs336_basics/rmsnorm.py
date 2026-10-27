@@ -24,14 +24,14 @@ class RMSNorm(nn.Module):
         super().__init__()
 
         # Module params
-        self.gain = nn.Parameter(torch.empty((d_model), 
+        self.weight = nn.Parameter(torch.empty((d_model),
                                 device=device, 
                                 dtype=dtype))
         self.eps = eps
 
         std = math.sqrt(2.0 / (d_model))
         nn.init.trunc_normal_(
-            self.gain,
+            self.weight,
             mean=0.0,
             std=std,
             a=-3 * std,
@@ -55,7 +55,7 @@ class RMSNorm(nn.Module):
         x = x.to(torch.float32)
 
         rms = torch.sqrt(torch.mean(x**2, dim=-1, keepdim=True) + self.eps)# (B,L,1)
-        x = self.gain * (x / rms) # (D,)x(B,L,D)
+        x = self.weight * (x / rms) # (D,)x(B,L,D)
 
         return x.to(in_dtype)
 

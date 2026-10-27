@@ -6,7 +6,6 @@ from jaxtyping import Float, Int, Bool
 from torch import Tensor
 from cs336_basics.linear import Linear
 from cs336_basics.sdpa import sdpa
-from cs336_basics.rope import RotaryPositionalEmbedding
 
 class MultiheadSelfAttention(nn.Module):
     def __init__(
@@ -48,7 +47,7 @@ class MultiheadSelfAttention(nn.Module):
         self.q_proj = Linear(self.d_model, self.d_model, device, dtype)
         self.k_proj = Linear(self.d_model, self.d_model, device, dtype)
         self.v_proj = Linear(self.d_model, self.d_model, device, dtype)
-        self.o_proj = Linear(self.d_model, self.d_model, device, dtype)
+        self.output_proj = Linear(self.d_model, self.d_model, device, dtype)
 
         self.pos_layer = pos_layer
 
@@ -116,17 +115,4 @@ class MultiheadSelfAttention(nn.Module):
         mh_sdpa = sdpa(q, k, v, attn_mask) # (B,H,L,d)x(B,H,d,L)x(B,H,L,d) = (B,H,L,d)
         mh_sdpa = mh_sdpa.transpose(-2,-3).reshape(*batch_dims, seq_len, self.d_model) # (B,L,H*d)=(B,L,D)
 
-        return self.o_proj(mh_sdpa) # (B,L,D)x(D,D)
-        
-
-
-
-
-
-
-
-
-
-
-    
-
+        return self.output_proj(mh_sdpa) # (B,L,D)x(D,D)

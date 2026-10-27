@@ -24,9 +24,9 @@ class SwiGLU(nn.Module):
         super().__init__()
 
         # Module params
-        self.up_proj = Linear(d_model, d_ff, device=device, dtype=dtype)
-        self.gate_proj = Linear(d_model, d_ff, device=device, dtype=dtype)
-        self.down_proj = Linear(d_ff, d_model, device=device, dtype=dtype)
+        self.w3 = Linear(d_model, d_ff, device=device, dtype=dtype)
+        self.w1 = Linear(d_model, d_ff, device=device, dtype=dtype)
+        self.w2 = Linear(d_ff, d_model, device=device, dtype=dtype)
 
 
     def forward(self, x: Float[Tensor, "... d_model"]) -> Float[Tensor, "... d_model"]:
@@ -41,12 +41,12 @@ class SwiGLU(nn.Module):
             Float[Tensor, "... d_model"]: Uses the input device. With matching
                 input and projection dtypes, preserves that dtype outside autocast.
         """
-        gate = self.gate_proj(x) # (B,L,D)x(D,I)
+        gate = self.w1(x) # (B,L,D)x(D,I)
         silu = gate*torch.sigmoid(gate) # (B,L,I)
 
-        up = self.up_proj(x) # (B,L,I)
+        up = self.w3(x) # (B,L,I)
 
-        return self.down_proj(silu * up) # (B,L,I)x(I,D)
+        return self.w2(silu * up) # (B,L,I)x(I,D)
 
     
 

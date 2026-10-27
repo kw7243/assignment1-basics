@@ -22,12 +22,12 @@ class Embedding(nn.Module):
             dtype (torch.dtype | None): Floating-point dtype for the embedding parameter. None uses the PyTorch default.
         """
         super().__init__()
-        self.embedding = nn.Parameter(torch.empty((num_embeddings, embedding_dim), 
+        self.weight = nn.Parameter(torch.empty((num_embeddings, embedding_dim), 
                                                    device=device, 
                                                    dtype=dtype))
         std = math.sqrt(2.0 / (num_embeddings + embedding_dim))
         nn.init.trunc_normal_(
-            self.embedding,
+            self.weight,
             mean=0.0,
             std=std,
             a=-3 * std,
@@ -49,7 +49,7 @@ class Embedding(nn.Module):
             Float[Tensor, "... embedding_dim"]: Uses the embedding parameter's
                 dtype and device.
         """
-        return self.embedding[token_ids]
+        return self.weight[token_ids]
 
     
 
