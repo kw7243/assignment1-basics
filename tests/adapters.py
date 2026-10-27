@@ -21,6 +21,7 @@ from cs336_basics.swiglu import SwiGLU
 from cs336_basics.rope import RotaryPositionalEmbedding
 from cs336_basics.softmax import softmax
 from cs336_basics.sdpa import sdpa
+from cs336_basics.mha import MultiheadSelfAttention
 
 def run_linear(
     d_in: int,
@@ -174,7 +175,17 @@ def run_multihead_self_attention(
         Float[Tensor, " ... sequence_length d_model"]: Tensor with the output of running your optimized, batched multi-headed attention
         implementation with the given QKV projection weights and input features.
     """
-    raise NotImplementedError
+    mha = MultiheadSelfAttention(d_model, num_heads, 
+                                 pos_layer=None, 
+                                 device=q_proj_weight.device, 
+                                 dtype=q_proj_weight.dtype)
+
+    mha.load_state_dict({"q_proj.weight": q_proj_weight,
+                         "k_proj.weight": k_proj_weight,
+                         "v_proj.weight": v_proj_weight,
+                         "o_proj.weight": o_proj_weight})
+
+    return mha(in_features)
 
 
 def run_multihead_self_attention_with_rope(
@@ -214,7 +225,20 @@ def run_multihead_self_attention_with_rope(
         Float[Tensor, " ... sequence_length d_model"]: Tensor with the output of running your optimized, batched multi-headed attention
         implementation with the given QKV projection weights and input features.
     """
-    raise NotImplementedError
+    rope = RotaryPositionalEmbedding(theta, d_model // num_heads, max_seq_len, 
+                                     device=q_proj_weight.device)
+    mha = MultiheadSelfAttention(d_model, num_heads, 
+                                 pos_layer=rope, 
+                                 device=q_proj_weight.device, 
+                                 dtype=q_proj_weight.dtype)
+
+    mha.load_state_dict({"q_proj.weight": q_proj_weight,
+                         "k_proj.weight": k_proj_weight,
+                         "v_proj.weight": v_proj_weight,
+                         "o_proj.weight": o_proj_weight})
+
+
+    return mha(in_features, token_positions)
 
 
 def run_rope(
