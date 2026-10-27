@@ -8,10 +8,22 @@ def find_chunk_boundaries(
     split_special_token: bytes,
 ) -> list[int]:
     """
-    Chunk the file into parts that can be counted independently.
-    May return fewer chunks if the boundaries end up overlapping.
+    Find byte offsets for chunks that can be counted independently.
+
+    Args:
+        file (BinaryIO): Must be readable and seekable. This call moves its cursor.
+        desired_num_chunks (int): Positive target number of chunks.
+        split_special_token (bytes): Nonempty marker used to find split points.
+
+    Returns:
+        list[int]: Sorted, unique byte offsets, including the start and end of the file.
+            There can be fewer chunks if candidate boundaries overlap.
+
+    Raises:
+        TypeError: If split_special_token is not bytes.
     """
-    assert isinstance(split_special_token, bytes), "Must represent special token as a bytestring"
+    if not isinstance(split_special_token, bytes):
+        raise TypeError("split_special_token must be bytes.")
 
     # Get total file size in bytes
     file.seek(0, os.SEEK_END)

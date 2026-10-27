@@ -1,19 +1,25 @@
 import torch
 import torch.nn as nn
 import math
-from jaxtyping import Float, Int
+from jaxtyping import Float
 from torch import Tensor
 
 class RMSNorm(nn.Module):
-    def __init__(self, d_model: int, eps: float = 1e-5, device=None, dtype=None) -> None:
+    def __init__(
+        self,
+        d_model: int,
+        eps: float = 1e-5,
+        device: torch.device | str | None = None,
+        dtype: torch.dtype | None = None,
+    ) -> None:
         """
-        Create RMSNorm layer.
+        Create an RMSNorm layer.
 
         Args:
-            d_model: int  Hidden dimension of the model
-            eps: float = 1e-5  Epsilon value for numerical stability
-            device: torch.device | None = None  Device to store the parameters on
-            dtype: torch.dtype | None = None  Data type of the parameters
+            d_model (int): Hidden dimension of the model.
+            eps (float): Epsilon value for numerical stability.
+            device (torch.device | str | None): Device for the gain parameter. None uses the PyTorch default.
+            dtype (torch.dtype | None): Floating-point dtype for the gain. None uses the PyTorch default.
         """
         super().__init__()
 
@@ -32,13 +38,18 @@ class RMSNorm(nn.Module):
             b=3 * std,
         )
 
-    def forward(self, x: Int[Tensor, " ... d_model"]) -> Float[Tensor, " ... d_model"]:
+    def forward(self, x: Float[Tensor, "... d_model"]) -> Float[Tensor, "... d_model"]:
         """
+        Normalize the final dimension and apply the gain.
+
         Args:
-            x (Int[Tensor, "... d_model"]): input tensor (B,L,D)
+            x (Float[Tensor, "... d_model"]): Must be on the gain's device.
 
         Returns:
-            Float[Tensor, "... d_model"]: RMSNorm(x) (B,L,D)
+            Float[Tensor, "... d_model"]: Preserves the input dtype and device.
+                Normalization uses float32 intermediates, including for float64
+                inputs. Gain multiplication follows PyTorch dtype promotion
+                before conversion back to the input dtype.
         """
         in_dtype = x.dtype
         x = x.to(torch.float32)

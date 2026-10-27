@@ -6,19 +6,35 @@ from torch import Tensor
 from cs336_basics.linear import Linear
 
 class RotaryPositionalEmbedding(nn.Module):
-    def __init__(self, theta: float, d_k: int, max_seq_len: int, device=None) -> None:
+    cos_table: Tensor
+    sin_table: Tensor
+
+    def __init__(
+        self,
+        theta: float,
+        d_k: int,
+        max_seq_len: int,
+        device: torch.device | str | None = None,
+    ) -> None:
         """
-        Create RoPE layer
+        Create a rotary positional embedding layer.
 
         Args:
-            theta: float  Θ value for the RoPE
-            d_k: int  dimension of query and key vectors
-            max_seq_len: int  Maximum sequence length that will be input
-            device: torch.device | None = None  Device to store the buffer on
+            theta (float): Base for the rotary frequencies.
+            d_k (int): Positive, even dimension of each query or key vector.
+            max_seq_len (int): Number of token positions to cache.
+            device (torch.device | str | None): Device for the cached sine and cosine buffers.
+
+        The buffers use the default floating-point dtype at construction.
+        Forward converts selected values to the input dtype.
+
+        Raises:
+            ValueError: If d_k is not positive and even.
         """
         super().__init__()
 
-        assert d_k > 0 and d_k % 2 == 0, "Dimensions not positive even number"
+        if d_k <= 0 or d_k % 2 != 0:
+            raise ValueError("d_k must be a positive even number.")
 
         # Module params
         dims = torch.arange(0, d_k, 2, device=device)
@@ -26,7 +42,7 @@ class RotaryPositionalEmbedding(nn.Module):
         # unsqueeze(1) = [:, None]
         freqs = (theta ** (-dims/d_k)).unsqueeze(1) # (d_k/2,1) float32
 
-        positions = torch.arange(max_seq_len,  dtype=freqs.dtype)[:, None] # (L_max,1)
+        positions = torch.arange(max_seq_len, device=freqs.device, dtype=freqs.dtype)[:, None] # (L_max,1)
 
         # matmul reqs matching dtypes, but broadcasting upgrades int --> float
         angles = positions @ freqs.T # (L_max, d_k/2) float32
@@ -42,14 +58,20 @@ class RotaryPositionalEmbedding(nn.Module):
     def forward(self, x: Float[Tensor, " ... seq_len d_k"], 
                 token_positions: Int[Tensor, " ... seq_len"]) -> Float[Tensor, " ... seq_len d_k"]:
         """
+        Rotate vectors at the supplied token positions.
+
         Args:
-            x (Float[Tensor, "... seq_len d_k"]): input tensor (ex. (B,L,D))
-            token_positions (Int[Tensor, " ... seq_len"]): token positions for a batch 
-                                            (diff reqs process seqs at different positions)
+            x (Float[Tensor, "... seq_len d_k"]): Vectors to rotate.
+            token_positions (Int[Tensor, "... seq_len"]): Leading dimensions
+                must broadcast against those of x.
 
         Returns:
-            Float[Tensor, "... seq_len d_k"]: RoPE(x)
-                                            ex. (B,L,D)
+            Float[Tensor, "... seq_len d_k"]: Preserves the input dtype and device.
+
+        Requires:
+            x and the module buffers are on the same device.
+            token_positions contains valid indexing integers in
+            [0, max_seq_len), on a device supported for buffer indexing.
         """
 
         x_even = x[..., 0::2] # (B,L,D/2)

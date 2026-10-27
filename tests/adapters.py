@@ -51,7 +51,7 @@ def run_linear(
 
     layer.load_state_dict({"weight": weights})
 
-    return layer(in_features)
+    return layer(in_features.to(weights))
 
     
 
@@ -83,7 +83,7 @@ def run_embedding(
 
     embedding.load_state_dict({"embedding": weights})
 
-    return embedding(token_ids)
+    return embedding(token_ids.to(device=weights.device))
 
 
 def run_swiglu(
@@ -110,12 +110,12 @@ def run_swiglu(
     """
     # Example:
     # If your state dict keys match, you can use `load_state_dict()`
-    swiglu = SwiGLU(d_model, d_ff, device=w1_weight.device, dtype=w1_weight.device)
+    swiglu = SwiGLU(d_model, d_ff, device=w1_weight.device, dtype=w1_weight.dtype)
     swiglu.load_state_dict({"up_proj.weight": w3_weight,
                             "gate_proj.weight": w1_weight,
                             "down_proj.weight": w2_weight})
 
-    return swiglu(in_features)
+    return swiglu(in_features.to(w1_weight))
     # You can also manually assign the weights
     # swiglu.w1.weight.data = w1_weight
     # swiglu.w2.weight.data = w2_weight
@@ -141,7 +141,7 @@ def run_scaled_dot_product_attention(
     Returns:
         Float[Tensor, " ... queries d_v"]: Output of SDPA
     """
-    return sdpa(Q, K, V, mask)
+    return sdpa(Q, K, V, mask.to(device=Q.device) if mask is not None else None)
 
 
 def run_multihead_self_attention(
@@ -185,7 +185,7 @@ def run_multihead_self_attention(
                          "v_proj.weight": v_proj_weight,
                          "o_proj.weight": o_proj_weight})
 
-    return mha(in_features)
+    return mha(in_features.to(q_proj_weight))
 
 
 def run_multihead_self_attention_with_rope(
@@ -238,7 +238,8 @@ def run_multihead_self_attention_with_rope(
                          "o_proj.weight": o_proj_weight})
 
 
-    return mha(in_features, token_positions)
+    return mha(in_features.to(q_proj_weight),
+               token_positions.to(device=q_proj_weight.device) if token_positions is not None else None)
 
 
 def run_rope(
@@ -265,7 +266,7 @@ def run_rope(
                                      max_seq_len, 
                                      device=in_query_or_key.device)
 
-    return rope(in_query_or_key, token_positions)
+    return rope(in_query_or_key, token_positions.to(device=in_query_or_key.device))
     
 
 
@@ -446,7 +447,7 @@ def run_rmsnorm(
     """
     rmsnorm = RMSNorm(d_model, eps, device=weights.device, dtype=weights.dtype)
     rmsnorm.load_state_dict({"gain": weights})
-    return rmsnorm(in_features)
+    return rmsnorm(in_features.to(weights))
 
 
 

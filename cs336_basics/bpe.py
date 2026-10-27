@@ -9,6 +9,16 @@ def count_pretokens(
     corpus: str,
     special_tokens: list[str],
 ) -> Counter[tuple[bytes, ...]]:
+    """Count ordinary pre-tokens represented as tuples of single-byte values.
+
+    Args:
+        corpus (str): Training text to split into pre-tokens.
+        special_tokens (list[str]): Complete tokens that delimit ordinary text and are
+            excluded from the counts.
+
+    Returns:
+        Counter[tuple[bytes, ...]]: UTF-8 pre-token frequencies.
+    """
 
     escaped = [
         re.escape(token)
@@ -33,7 +43,7 @@ def count_pretokens(
 
 
 def train_bpe(
-    input_path: str | os.PathLike,
+    input_path: str | os.PathLike[str],
     vocab_size: int,
     special_tokens: list[str],
     **kwargs,
@@ -42,15 +52,19 @@ def train_bpe(
     Train a byte-level BPE tokenizer.
 
     Args:
-        input_path: Path to training text.
-        vocab_size: Maximum vocabulary size, including special tokens.
-        special_tokens: Tokens that must never be split.
+        input_path (str | os.PathLike[str]): Path to UTF-8 training text. Not read when corpus_freq
+            is supplied through kwargs.
+        vocab_size (int): Target vocabulary size, including the 256 base byte
+            tokens and unique special tokens. Must accommodate these entries.
+            Training can stop early if no mergeable pairs remain.
+        special_tokens (list[str]): Complete tokens to add to the vocabulary and exclude
+            from ordinary pre-token counts.
+        **kwargs (object): Optional corpus_freq mapping from tuples of byte strings
+            to pre-token counts. Other keyword arguments are ignored.
 
     Returns:
-        vocab:
-            Maps token ID -> bytes.
-        merges:
-            Ordered list of learned byte-pair merges.
+        vocab (dict[int, bytes]): Token bytes indexed by ID.
+        merges (list[tuple[bytes, bytes]]): Learned pairs in merge-priority order.
     """
 
     # Step 1: Initialize vocabulary.

@@ -1,37 +1,45 @@
 import torch
 import torch.nn as nn
-import math
-from jaxtyping import Float, Int
+from jaxtyping import Float
 from torch import Tensor
 from cs336_basics.linear import Linear
 
 class SwiGLU(nn.Module):
-    def __init__(self, d_model: int, d_ff: int, device=None, dtype=None) -> None:
+    def __init__(
+        self,
+        d_model: int,
+        d_ff: int,
+        device: torch.device | str | None = None,
+        dtype: torch.dtype | None = None,
+    ) -> None:
         """
-        Create RMSNorm layer.
+        Create a SwiGLU feed-forward layer.
 
         Args:
-            d_model: int  Hidden dimension of the model
-            d_ff (int): intermediate dim
-            device: torch.device | None = None  Device to store the parameters on
-            dtype: torch.dtype | None = None  Data type of the parameters
+            d_model (int): Input and output dimension of the model.
+            d_ff (int): Intermediate dimension.
+            device (torch.device | str | None): Device for all projection parameters. None uses the PyTorch default.
+            dtype (torch.dtype | None): Floating-point dtype for all projections. None uses the PyTorch default.
         """
         super().__init__()
 
         # Module params
-        self.up_proj = Linear(d_model, d_ff) 
-        self.gate_proj = Linear(d_model, d_ff)
-        self.down_proj = Linear(d_ff, d_model)
+        self.up_proj = Linear(d_model, d_ff, device=device, dtype=dtype)
+        self.gate_proj = Linear(d_model, d_ff, device=device, dtype=dtype)
+        self.down_proj = Linear(d_ff, d_model, device=device, dtype=dtype)
 
 
-    def forward(self, x: Float[Tensor, " ... d_model"]) -> Float[Tensor, " ... d_model"]:
+    def forward(self, x: Float[Tensor, "... d_model"]) -> Float[Tensor, "... d_model"]:
         """
+        Apply the gated feed-forward transformation.
+
         Args:
-            x (Int[Tensor, "... d_model"]): input tensor (ex. (B,L,D))
+            x (Float[Tensor, "... d_model"]): Must have a dtype and device
+                compatible with all projection parameters.
 
         Returns:
-            Float[Tensor, "... d_model"]: SwiGLU(x) = (xW_up * SiLU(xW_gate))@W_down
-                                            ex. (B,L,D)
+            Float[Tensor, "... d_model"]: Uses the input device. With matching
+                input and projection dtypes, preserves that dtype outside autocast.
         """
         gate = self.gate_proj(x) # (B,L,D)x(D,I)
         silu = gate*torch.sigmoid(gate) # (B,L,I)

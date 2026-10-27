@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import math
-from jaxtyping import Float, Int
+from jaxtyping import Float, Int32, Int64
 from torch import Tensor
 
 class Embedding(nn.Module):
@@ -16,10 +16,10 @@ class Embedding(nn.Module):
         Create an embedding layer.
 
         Args:
-            num_embeddings (int): The size of the vocabulary.
-            embedding_dim (int): The size of each embedding vector, called d_model.
-            device (torch.device | str | None): The device for the parameters.
-            dtype (torch.dtype | None): The data type for the parameters.
+            num_embeddings (int): Vocabulary size.
+            embedding_dim (int): Model dimension, d_model.
+            device (torch.device | str | None): Device for the embedding parameter. None uses the PyTorch default.
+            dtype (torch.dtype | None): Floating-point dtype for the embedding parameter. None uses the PyTorch default.
         """
         super().__init__()
         self.embedding = nn.Parameter(torch.empty((num_embeddings, embedding_dim), 
@@ -34,16 +34,20 @@ class Embedding(nn.Module):
             b=3 * std,
         )
 
-    def forward(self, token_ids: Int[Tensor, " ..."]) -> Float[Tensor, " ... embedding_dim"]:
+    def forward(
+        self, token_ids: Int32[Tensor, "..."] | Int64[Tensor, "..."]
+    ) -> Float[Tensor, "... embedding_dim"]:
         """
         Get the embedding vector for each token ID.
 
         Args:
-            token_ids (Int[Tensor, "..."]): Token IDs with any number of dimensions.
+            token_ids (Int32[Tensor, "..."] | Int64[Tensor, "..."]): Values must be
+                in [0, num_embeddings). Indices must be on the CPU
+                or on the embedding parameter's device.
 
         Returns:
-            Float[Tensor, "... embedding_dim"]: Embeddings with the input dimensions
-                followed by embedding_dim
+            Float[Tensor, "... embedding_dim"]: Uses the embedding parameter's
+                dtype and device.
         """
         return self.embedding[token_ids]
 

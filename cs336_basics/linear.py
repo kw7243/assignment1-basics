@@ -34,16 +34,16 @@ class Linear(nn.Module):
         self,
         in_features: int,
         out_features: int,
-        device: torch.device | None = None,
+        device: torch.device | str | None = None,
         dtype: torch.dtype | None = None,
-    ):
+    ) -> None:
         """Construct a bias-free linear layer.
 
         Args:
-            in_features: Positive input dimension.
-            out_features: Positive output dimension.
-            device: Device for the weight parameter.
-            dtype: Floating-point dtype for the weights.
+            in_features (int): Positive input dimension.
+            out_features (int): Positive output dimension.
+            device (torch.device | str | None): Device for the weight parameter. None uses the PyTorch default.
+            dtype (torch.dtype | None): Floating-point dtype for the weights. None uses the PyTorch default.
 
         Raises:
             ValueError: If a feature dimension is not positive.
@@ -78,13 +78,13 @@ class Linear(nn.Module):
         """Apply the linear transformation.
 
         Args:
-            x: Tensor of shape (..., in_features).
+            x (Float[Tensor, "... in_features"]): Activations to transform.
 
         Returns:
-            Tensor of shape (..., out_features).
+            Float[Tensor, "... out_features"]: Uses the input device. With matching
+                input and weight dtypes, preserves that dtype outside autocast.
 
         Requires:
-            x.shape[-1] == in_features
             x is compatible with the weight dtype and device.
         """
         return x @ self.weight.T

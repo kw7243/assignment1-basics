@@ -7,19 +7,31 @@ import regex as re
 PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
 class Tokenizer:
     """
-    AF(`vocab`, `merges`, `special_tokens`) = tokenizer w/ these
-    RI:
-        - 
+    A byte-level BPE tokenizer with an ordered list of merge rules.
+
+    Token IDs map to unique byte strings. The vocabulary includes all 256
+    single-byte values. Special tokens are matched as complete strings.
     """
     def __init__(
         self,
         vocab: dict[int, bytes],
         merges: list[tuple[bytes, bytes]],
         special_tokens: list[str] | None = None,
-    ):
+    ) -> None:
         """
         Initialize a tokenizer using an existing vocabulary
         and learned BPE merge rules.
+
+        Args:
+            vocab (dict[int, bytes]): Token bytes indexed by ID. Entries must be
+                unique and include all 256 single-byte values.
+            merges (list[tuple[bytes, bytes]]): Merge-priority order, earliest first.
+            special_tokens (list[str] | None): Nonempty tokens to keep complete.
+                Missing special tokens are added to a copy of the vocabulary.
+
+        Raises:
+            TypeError: If vocabulary entries have invalid types.
+            ValueError: If token bytes are not unique or a base byte is missing.
         """
 
         self.vocab = dict(vocab)
@@ -50,33 +62,50 @@ class Tokenizer:
         self._check_rep()
 
     def _check_rep(self) -> None:
-        assert len(self.byte_to_id) == len(self.vocab)
+        if len(self.byte_to_id) != len(self.vocab):
+            raise ValueError("Vocabulary token bytes must be unique.")
 
-        assert all(
+        if not all(
             isinstance(token_id, int)
             and isinstance(token_bytes, bytes)
             for token_id, token_bytes in self.vocab.items()
-        )
+        ):
+            raise TypeError("Vocabulary entries must map integer token IDs to bytes.")
 
-        assert all(
+        if not all(
             bytes([i]) in self.byte_to_id
             for i in range(256)
-        )
+        ):
+            raise ValueError("Vocabulary must contain all 256 single-byte values.")
 
-        assert all(
+        if not all(
             self.byte_to_id[token_bytes] == token_id
             for token_id, token_bytes in self.vocab.items()
-        )
+        ):
+            raise RuntimeError("Vocabulary and reverse lookup are inconsistent.")
     
     @classmethod
     def from_files(
         cls,
-        vocab_filepath: str | os.PathLike,
-        merges_filepath: str | os.PathLike,
+        vocab_filepath: str | os.PathLike[str],
+        merges_filepath: str | os.PathLike[str],
         special_tokens: list[str] | None = None,
     ) -> "Tokenizer":
         """
         Load a saved vocabulary and merge list.
+
+        Args:
+            vocab_filepath (str | os.PathLike[str]): Binary pickle file containing a dict[int, bytes].
+            merges_filepath (str | os.PathLike[str]): Binary pickle file containing a
+                list[tuple[bytes, bytes]] in merge-priority order.
+            special_tokens (list[str] | None): Additional complete tokens to register.
+
+        Returns:
+            Tokenizer: Uses the saved vocabulary and merge priorities.
+
+        Requires:
+            Both pickle files come from a trusted source. Loading a pickle
+            can execute code.
         """
         # TODO: Deserialize vocab and merges.
         # Return an instance of cls.
@@ -91,6 +120,10 @@ class Tokenizer:
     def encode(self, text: str) -> list[int]:
         """
         Convert text into a sequence of token IDs.
+
+        Registered special tokens remain complete. Ordinary text is encoded
+        as UTF-8 bytes before the learned merge rules are applied.
+
         """
         # 1. Handle special tokens.
         # split by special tokens
@@ -166,6 +199,11 @@ class Tokenizer:
     def decode(self, ids: list[int]) -> str:
         """
         Convert token IDs into text.
+
+        Concatenate the token bytes before decoding UTF-8. Invalid byte
+        sequences are replaced with the Unicode replacement character.
+        Each ID must be present in the vocabulary.
+
         """
         return b"".join([self.vocab[id] for id in ids]).decode("utf-8", errors="replace")
 
@@ -174,6 +212,16 @@ class Tokenizer:
     ) -> Iterator[int]:
         """
         Lazily encode a stream of strings.
+
+        Treat the strings as consecutive chunks of one text stream. Special
+        tokens and ordinary pre-tokens can span chunk boundaries. Yield
+        token IDs and retain unfinished text between chunks.
+
+        Args:
+            iterable (Iterable[str]): Consecutive text chunks.
+
+        Yields:
+            int: Next token ID in the combined text stream.
         """
         
 
