@@ -1,13 +1,51 @@
+import math
 
 import torch
 import torch.nn as nn
-import math
-from jaxtyping import Float, Int, Bool
+from jaxtyping import Bool, Float, Int
 from torch import Tensor
-from cs336_basics.linear import Linear
-from cs336_basics.sdpa import sdpa
 
-class MultiheadSelfAttention(nn.Module):
+from cs336_basics.linear import Linear
+from cs336_basics.softmax import softmax
+
+
+def sdpa(
+    q: Float[Tensor, "... query_len d_k"],
+    k: Float[Tensor, "... key_len d_k"],
+    v: Float[Tensor, "... key_len d_v"],
+    mask: Bool[Tensor, "..."] | None = None,
+) -> Float[Tensor, "... query_len d_v"]:
+    """Compute scaled dot-product attention.
+
+    Args:
+        q (Float[Tensor, "... query_len d_k"]): Queries.
+        k (Float[Tensor, "... key_len d_k"]): Keys.
+        v (Float[Tensor, "... key_len d_v"]): Values to aggregate.
+        mask (Bool[Tensor, "..."] | None): Broadcasts to the attention scores
+            (..., query_len, key_len). True allows a key position.
+
+    Returns:
+        Float[Tensor, "... query_len d_v"]: Attention-weighted values. Leading
+            dimensions follow input broadcasting.
+
+    Requires:
+        q, k, and v have matching floating-point dtypes and devices.
+        Their leading dimensions are broadcastable, and d_k is positive.
+        mask, when supplied, is on the same device as the inputs.
+        Each query has at least one allowed key.
+    """
+    d_k = q.shape[-1]
+    attn_scores = (q @ k.transpose(-2, -1)) / math.sqrt(d_k) # (B,L,L)
+
+    if mask is not None:
+        attn_scores = attn_scores.masked_fill(~mask, float("-inf")) 
+
+    attn_probs = softmax(attn_scores, dim=-1) 
+
+    return attn_probs @ v # (B,L,D)
+
+
+class MultiHeadSelfAttention(nn.Module):
     def __init__(
         self,
         d_model: int,
@@ -94,10 +132,10 @@ class MultiheadSelfAttention(nn.Module):
         k = k.reshape(*batch_dims, seq_len, self.num_heads, self.d_head).transpose(-2,-3) # (B,H,L,d)
         v = v.reshape(*batch_dims, seq_len, self.num_heads, self.d_head).transpose(-2,-3) # (B,H,L,d)
 
-        # positional encodings
-        if self.pos_layer:
-            if token_positions is None:
-                raise ValueError("token_positions is required when pos_layer is supplied.")
+        # apply positional encodings
+        if self.pos_layer is not None:
+            if token_positions is None: # default to [0,..,L-1] for prefill
+                token_positions = torch.arange(0, seq_len).expand(*batch_dims, seq_len) # (B,L)
             tok_pos = token_positions.unsqueeze(-2) # (B,L) --> (B,1,L)
             q, k = self.pos_layer(q, tok_pos), self.pos_layer(k, tok_pos)
 

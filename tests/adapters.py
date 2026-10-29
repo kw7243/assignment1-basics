@@ -15,13 +15,12 @@ from cs336_basics.tokenizer import Tokenizer
 
 # Transformer
 from cs336_basics.linear import Linear
+from cs336_basics.attention import MultiHeadSelfAttention, sdpa
 from cs336_basics.embedding import Embedding
 from cs336_basics.rmsnorm import RMSNorm
 from cs336_basics.swiglu import SwiGLU
 from cs336_basics.rope import RotaryPositionalEmbedding
 from cs336_basics.softmax import softmax
-from cs336_basics.sdpa import sdpa
-from cs336_basics.mha import MultiheadSelfAttention
 from cs336_basics.transformer import TransformerBlock
 from cs336_basics.transformer_lm import TransformerLM
 
@@ -177,7 +176,7 @@ def run_multihead_self_attention(
         Float[Tensor, " ... sequence_length d_model"]: Tensor with the output of running your optimized, batched multi-headed attention
         implementation with the given QKV projection weights and input features.
     """
-    mha = MultiheadSelfAttention(d_model, num_heads, 
+    mha = MultiHeadSelfAttention(d_model, num_heads,
                                  pos_layer=None, 
                                  device=q_proj_weight.device, 
                                  dtype=q_proj_weight.dtype)
@@ -229,7 +228,7 @@ def run_multihead_self_attention_with_rope(
     """
     rope = RotaryPositionalEmbedding(theta, d_model // num_heads, max_seq_len, 
                                      device=q_proj_weight.device)
-    mha = MultiheadSelfAttention(d_model, num_heads, 
+    mha = MultiHeadSelfAttention(d_model, num_heads,
                                  pos_layer=rope, 
                                  device=q_proj_weight.device, 
                                  dtype=q_proj_weight.dtype)
@@ -351,10 +350,8 @@ def run_transformer_block(
     
     block = TransformerBlock(d_model, num_heads, d_ff, rope, device, dtype)
     block.load_state_dict(weights)
-
-    L = in_features.shape[-2]
-    token_positions = torch.arange(0, L).expand(in_features.shape[:-1])
-    return block(in_features, token_positions)
+    
+    return block(in_features)
 
 
 def run_transformer_lm(
@@ -449,9 +446,7 @@ def run_transformer_lm(
             dtype,
         )
     transformer_lm.load_state_dict(weights)
-    L = in_indices.shape[-1]
-    token_positions = torch.arange(0, L, device=in_indices.device).expand(in_indices.shape)
-    return transformer_lm(in_indices, token_positions)
+    return transformer_lm(in_indices)
 
 
 def run_rmsnorm(

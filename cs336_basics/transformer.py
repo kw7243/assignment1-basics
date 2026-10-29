@@ -6,8 +6,7 @@ from jaxtyping import Float, Int, Bool
 from torch import Tensor
 from cs336_basics.rmsnorm import RMSNorm
 from cs336_basics.swiglu import SwiGLU
-from cs336_basics.mha import MultiheadSelfAttention
-from cs336_basics.sdpa import sdpa
+from cs336_basics.attention import MultiHeadSelfAttention, sdpa
 
 class TransformerBlock(nn.Module):
     def __init__(
@@ -49,7 +48,7 @@ class TransformerBlock(nn.Module):
         self.d_head = self.d_model // num_heads
 
         self.ln1 = RMSNorm(d_model, device=device, dtype=dtype)
-        self.attn = MultiheadSelfAttention(d_model, num_heads,
+        self.attn = MultiHeadSelfAttention(d_model, num_heads,
                                  pos_layer, 
                                  device, 
                                  dtype)
