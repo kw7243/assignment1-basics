@@ -116,8 +116,7 @@ class MultiHeadSelfAttention(nn.Module):
             device requirements. Each query has at least one allowed key.
 
         Raises:
-            ValueError: If the input width does not match d_model, or positions
-                are missing when a positional layer is supplied.
+            ValueError: If the input width does not match d_model
         """
         *batch_dims, seq_len, d_model = x.shape
         if d_model != self.d_model:

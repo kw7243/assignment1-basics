@@ -108,12 +108,12 @@ class TransformerLM(nn.Module):
             ValueError: If the input width does not match d_model, or positions
                 are missing when a positional layer is supplied.
         """
-        x = self.token_embeddings(token_ids)
+        x = self.token_embeddings(token_ids) # (B,L,V) --> (B,L,D)
 
         for layer in self.layers:
             x = layer(x, token_positions, mask)
 
-        x = self.ln_final(x)    
+        x = self.ln_final(x) # (B,L,D) --> (B,L,D)    
 
-        return self.lm_head(x)
+        return self.lm_head(x) # (B,L,D)x(D,V) --> (B,L,V)
         
