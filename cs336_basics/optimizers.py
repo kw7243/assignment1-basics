@@ -7,6 +7,52 @@ from typing import Any
 import torch
 from torch import Tensor
 
+@torch.no_grad()
+def clip_gradients(
+    parameters: Iterable[torch.nn.Parameter],
+    max_l2_norm: float,
+    eps: float = 1e-6
+) -> None:
+    """Clip the global L2 norm of parameter gradients.
+
+    Args:
+        parameters: Iterable of model parameters whose gradients
+            will be clipped.
+        max_l2_norm: Maximum permitted global gradient norm.
+        eps: for scale = M/(||g|| +eps)
+
+    Returns:
+        None.
+
+    Requires:
+        max_norm > 0.
+        Gradients are already computed by backward().
+        All non-None gradients are compatible with their parameters.
+
+    Effects:
+        Modifies gradients in place if their global L2 norm exceeds
+        max_norm. Does not modify parameter values.
+        Parameters with no gradient are ignored.
+    """
+    grads = [p.grad for p in parameters if p.grad is not None]
+
+    if not grads:
+        return None
+
+    # Compute global L2 norm
+    grad_norm = torch.sqrt(
+        sum((g.float() ** 2).sum() for g in grads)
+    )
+
+    if grad_norm <= max_l2_norm:
+        return None
+
+    scale = max_l2_norm / (grad_norm + eps)
+
+    for g in grads:
+        g.mul_(scale)
+
+    return None
 
 class SGD(torch.optim.Optimizer):
     """SGD with a per-parameter learning rate that decays as 1 / sqrt(t + 1)."""
