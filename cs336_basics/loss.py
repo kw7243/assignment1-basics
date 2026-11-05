@@ -5,19 +5,20 @@ from torch import Tensor
 from cs336_basics.softmax import softmax
 
 def cross_entropy(logits: Float[Tensor, " ... vocab_size"], 
-                  targets: Int[Tensor, "... "]) -> Float[Tensor, " ... "]: 
+                  targets: Int[Tensor, "... "]) -> Float[Tensor, ""]: 
     """
     -E[logq(y|x)] ~= -sum(logq(yi|xi)) = -sum(log func(yi,xi))
 
-    (B,L,D) --> (B,L)
+    (B,L,D) --> ()
 
     Args:
         logits (Float[Tensor, "... vocab_size"]): Unnormalized scores. (ex. (B,L,V))
         targets (Int[Tensor, "... "]): ground truth (t+1)th next token for t_th logit
 
     Returns:
-        Float[Tensor, "..."]: avg cross-entropy term per position t = -logq(yi | xi) = -log (Π pk_theta(xi) ^ 1(k == yi))
-                                (ex. (L,V))
+        Float[Tensor, "..."]: average CE over B,L dim; shape = ()
+                                avg cross-entropy term per position t = -logq(yi | xi) = -log (Π pk_theta(xi) ^ 1(k == yi))
+                                averaged over t
 
     Requires:
         dim selects a nonempty dimension. Each slice has a finite maximum.

@@ -23,7 +23,7 @@ from cs336_basics.rope import RotaryPositionalEmbedding
 from cs336_basics.softmax import softmax
 from cs336_basics.transformer import TransformerBlock
 from cs336_basics.transformer_lm import TransformerLM
-from cs336_basics.cross_entropy import cross_entropy
+from cs336_basics.loss import cross_entropy
 
 # Optimizers
 from cs336_basics.optimizers import SGD, AdamW, clip_gradients
