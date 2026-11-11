@@ -56,6 +56,8 @@ class TransformerLM(nn.Module):
         self.d_head = self.d_model // num_heads
         self.d_ff = d_ff
         self.num_layers = num_layers
+        self.vocab_size = vocab_size
+        self.context_length = context_length
 
         self.rope = RotaryPositionalEmbedding(rope_theta, self.d_head, 
                                         context_length, 
