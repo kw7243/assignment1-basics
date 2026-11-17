@@ -1,4 +1,3 @@
-
 import torch
 import torch.nn as nn
 import math
@@ -10,6 +9,7 @@ from cs336_basics.transformer import TransformerBlock
 from cs336_basics.rmsnorm import RMSNorm
 from cs336_basics.linear import Linear
 from cs336_basics.softmax import softmax
+from cs336_basics.kv_cache import KVCache
 
 class TransformerLM(nn.Module):
     def __init__(
@@ -32,8 +32,8 @@ class TransformerLM(nn.Module):
             d_ff (int): Intermediate dimension.
             rope_theta (float): 
             vocab_size: int
-            context_length: int,
-            num_layers: int,
+            context_length: int
+            num_layers: int
             device (torch.device | str | None): Device for the projection parameters.
             dtype (torch.dtype | None): Floating-point dtype for the projection parameters.
 
@@ -58,6 +58,8 @@ class TransformerLM(nn.Module):
         self.num_layers = num_layers
         self.vocab_size = vocab_size
         self.context_length = context_length
+        self.device = device
+        self.dtype = dtype
 
         self.rope = RotaryPositionalEmbedding(rope_theta, self.d_head, 
                                         context_length, 
@@ -69,13 +71,18 @@ class TransformerLM(nn.Module):
                                           device=device,
                                           dtype=dtype)
 
-        self.layers = nn.ModuleList([TransformerBlock(self.d_model, 
-                                                      self.num_heads, 
-                                                      self.d_ff, 
-                                                      self.rope,
-                                                      device,
-                                                      dtype,)
-                                    for _ in range(self.num_layers)])
+        self.layers = nn.ModuleList([
+            TransformerBlock(
+                d_model=self.d_model,
+                num_heads=self.num_heads,
+                d_ff=self.d_ff,
+                pos_layer=self.rope,
+                device=device,
+                dtype=dtype,
+                layer_idx=layer_idx,
+            )
+            for layer_idx in range(self.num_layers)
+        ])
         
         self.ln_final = RMSNorm(d_model, device=device, dtype=dtype)
         self.lm_head = Linear(d_model, vocab_size, device=device, dtype=dtype)
@@ -86,16 +93,21 @@ class TransformerLM(nn.Module):
         token_ids: Int[Tensor, "... seq_len"],
         token_positions: Int[Tensor, "... seq_len"] | None = None,
         mask: Bool[Tensor, "..."] | None = None,
+        kv_cache: KVCache | None = None
     ) -> Float[Tensor, "... seq_len vocab_size"]:
         """
 
         Args:
             token_ids (Int[Tensor, "... seq_len d_model"]): Input representations. seq_len <= `self.context_length`
-            token_positions (Int[Tensor, "... seq_len"] | None): Required when
-                pos_layer is supplied; otherwise unused.
+            token_positions (Int[Tensor, "... seq_len"] | None): Optional
+                absolute positions, forwarded to each Transformer layer.
             mask (Bool[Tensor, "..."] | None): Broadcasts to the attention scores
-                (..., num_heads, seq_len, seq_len). True allows a key position.
+                (..., num_heads, L, T + L), where T is the cached length and L
+                is the number of new tokens. True allows a key position.
                 The causal mask also applies.
+            kv_cache (KVCache | None): Externally owned cache for this call.
+                Each layer accesses its assigned layer index. The model does
+                not allocate, retain, or clear this cache.
 
         Returns:
             Float[Tensor, "... seq_len vocab_size"]: Unnormalized logits for distribution of next token.
@@ -107,13 +119,12 @@ class TransformerLM(nn.Module):
             device requirements. Each query has at least one allowed key.
 
         Raises:
-            ValueError: If the input width does not match d_model, or positions
-                are missing when a positional layer is supplied.
+            ValueError: If an attention input width does not match d_model.
         """
         x = self.token_embeddings(token_ids) # (B,L,V) --> (B,L,D)
 
         for layer in self.layers:
-            x = layer(x, token_positions, mask)
+            x = layer(x, token_positions=token_positions, mask=mask, kv_cache=kv_cache)
 
         x = self.ln_final(x) # (B,L,D) --> (B,L,D)    
 

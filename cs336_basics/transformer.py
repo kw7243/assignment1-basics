@@ -1,4 +1,3 @@
-
 import torch
 import torch.nn as nn
 import math
@@ -7,7 +6,7 @@ from torch import Tensor
 from cs336_basics.rmsnorm import RMSNorm
 from cs336_basics.swiglu import SwiGLU
 from cs336_basics.attention import MultiHeadSelfAttention, sdpa
-
+from cs336_basics.kv_cache import KVCache
 class TransformerBlock(nn.Module):
     def __init__(
         self,
@@ -17,6 +16,8 @@ class TransformerBlock(nn.Module):
         pos_layer: nn.Module | None = None,
         device: torch.device | str | None = None,
         dtype: torch.dtype | None = None,
+        *,
+        layer_idx: int | None = None,
     ) -> None:
         """Create a causal multihead self-attention layer.
 
@@ -26,6 +27,8 @@ class TransformerBlock(nn.Module):
             d_ff (int): Intermediate dimension.
             pos_layer (nn.Module | None): Optional positional layer for queries and keys. It must
                 accept projected tensors and token positions.
+            layer_idx (int | None): Fixed layer index passed to attention.
+                Required for cached forward calls; optional for uncached use.
             device (torch.device | str | None): Device for the projection parameters.
             dtype (torch.dtype | None): Floating-point dtype for the projection parameters.
 
@@ -46,12 +49,17 @@ class TransformerBlock(nn.Module):
         self.num_heads = num_heads
         self.d_model = d_model
         self.d_head = self.d_model // num_heads
+        self.layer_idx = layer_idx
 
         self.ln1 = RMSNorm(d_model, device=device, dtype=dtype)
-        self.attn = MultiHeadSelfAttention(d_model, num_heads,
-                                 pos_layer, 
-                                 device, 
-                                 dtype)
+        self.attn = MultiHeadSelfAttention(
+            d_model=d_model,
+            num_heads=num_heads,
+            pos_layer=pos_layer,
+            device=device,
+            dtype=dtype,
+            layer_idx=layer_idx,
+        )
         self.ln2 = RMSNorm(d_model, device=device, dtype=dtype)
         self.ffn = SwiGLU(d_model, d_ff, device, dtype)
 
@@ -61,16 +69,20 @@ class TransformerBlock(nn.Module):
         x: Float[Tensor, "... seq_len d_model"],
         token_positions: Int[Tensor, "... seq_len"] | None = None,
         mask: Bool[Tensor, "..."] | None = None,
+        kv_cache: KVCache | None = None
     ) -> Float[Tensor, "... seq_len d_model"]:
         """Apply transformer block to the input.
 
         Args:
             x (Float[Tensor, "... seq_len d_model"]): Sequence representations.
-            token_positions (Int[Tensor, "... seq_len"] | None): Required when
-                pos_layer is supplied; otherwise unused.
+            token_positions (Int[Tensor, "... seq_len"] | None): Optional
+                absolute positions, forwarded to attention.
             mask (Bool[Tensor, "..."] | None): Broadcasts to the attention scores
-                (..., num_heads, seq_len, seq_len). True allows a key position.
+                (..., num_heads, L, T + L), where T is the cached length and L
+                is the number of new tokens. True allows a key position.
                 The causal mask also applies.
+            kv_cache (KVCache | None): Externally owned cache, forwarded to
+                attention. Requires a layer_idx assigned at construction.
 
         Returns:
             Float[Tensor, "... seq_len d_model"]: Contextualized sequence representations.
@@ -82,10 +94,10 @@ class TransformerBlock(nn.Module):
             device requirements. Each query has at least one allowed key.
 
         Raises:
-            ValueError: If the input width does not match d_model, or positions
-                are missing when a positional layer is supplied.
+            ValueError: If the input width does not match d_model, or a cache
+                is supplied without a layer_idx assigned at construction.
         """
-        x += self.attn(self.ln1(x), token_positions, mask)
+        x += self.attn(self.ln1(x), token_positions=token_positions, mask=mask, kv_cache=kv_cache)
         x += self.ffn(self.ln2(x))
 
         return x

@@ -30,7 +30,7 @@ from cs336_basics.optimizers import SGD, AdamW, clip_gradients
 from cs336_basics.schedulers import get_lr_cosine_schedule
 from cs336_basics.data import get_batch
 from cs336_basics.checkpointing import save_checkpoint, load_checkpoint
-from cs336_basics.decoding import sample_next_token, generate_naive
+from cs336_basics.kv_cache import KVCache
 
 def run_linear(
     d_in: int,
@@ -573,6 +573,8 @@ def run_sample_next_token(
         Integer token IDs of shape (batch_size, 1), on the input device.
         The input logits are not modified.
     """
+    from cs336_basics.decoding import sample_next_token
+
     return sample_next_token(logits, temperature=temperature, top_p=top_p)
 
 
@@ -624,6 +626,90 @@ def run_generate_naive(
     )
 
 
+def run_prefill(
+    model: torch.nn.Module,
+    prompt_ids: Int[Tensor, "batch_size seq_len"],
+    temperature: float = 1.0,
+    top_p: float = 1.0,
+) -> tuple[Int[Tensor, "batch_size 1"], KVCache]:
+    """Process a prompt and return the first sampled token and new cache."""
+    from cs336_basics.decoding import prefill
+
+    return prefill(model, prompt_ids, temperature=temperature, top_p=top_p)
+
+
+def run_decode_step(
+    model: torch.nn.Module,
+    token_ids: Int[Tensor, "batch_size 1"],
+    kv_cache: KVCache,
+    temperature: float = 1.0,
+    top_p: float = 1.0,
+) -> Int[Tensor, "batch_size 1"]:
+    """Consume one token, update the supplied cache, and sample the next ID."""
+    from cs336_basics.decoding import decode_step
+
+    return decode_step(model, token_ids, kv_cache, temperature=temperature, top_p=top_p)
+
+
+def run_generate_kv(
+    vocab_size: int,
+    context_length: int,
+    d_model: int,
+    num_layers: int,
+    num_heads: int,
+    d_ff: int,
+    rope_theta: float,
+    weights: dict[str, Tensor],
+    prompt_ids: Int[Tensor, "batch_size seq_len"],
+    max_new_tokens: int,
+    temperature: float = 1.0,
+    top_p: float = 1.0,
+    eos_token_id: int | None = None,
+) -> Int[Tensor, "batch_size total_seq_len"]:
+    """Load Transformer weights and generate with an engine-owned KV cache.
+
+    Model settings and state-dict keys match run_generate_naive. Generation
+    options and output behavior match run_generate_kv_with_model. Pass the
+    loaded model directly so tests also check the model/decoder interface.
+    """
+    model = _load_transformer_lm(vocab_size, context_length, d_model, num_layers, num_heads, d_ff, rope_theta, weights)
+    return run_generate_kv_with_model(
+        model,
+        prompt_ids,
+        max_new_tokens=max_new_tokens,
+        temperature=temperature,
+        top_p=top_p,
+        eos_token_id=eos_token_id,
+    )
+
+
+def run_generate_kv_with_model(
+    model: torch.nn.Module,
+    prompt_ids: Int[Tensor, "batch_size seq_len"],
+    max_new_tokens: int,
+    temperature: float = 1.0,
+    top_p: float = 1.0,
+    eos_token_id: int | None = None,
+) -> Int[Tensor, "batch_size total_seq_len"]:
+    """Generate with one fresh cache per call, owned by the inference engine.
+
+    Prefill consumes the prompt once. Each later model call consumes only the
+    previously sampled token and uses the same cache. Prompt preservation,
+    token limits, EOS handling, and context limits match generate_naive.
+    The final sampled token is returned without another model call.
+    """
+    from cs336_basics.decoding import generate_kv
+
+    return generate_kv(
+        model,
+        prompt_ids,
+        max_new_tokens=max_new_tokens,
+        temperature=temperature,
+        top_p=top_p,
+        eos_token_id=eos_token_id,
+    )
+
+
 def run_generate_naive_with_model(
     model: torch.nn.Module,
     prompt_ids: Int[Tensor, "batch_size seq_len"],
@@ -652,6 +738,8 @@ def run_generate_naive_with_model(
         Generation stops before a model call would exceed model.context_length.
         A call at that limit can produce one final token beyond the limit.
     """
+    from cs336_basics.decoding import generate_naive
+
     return generate_naive(
         model,
         prompt_ids,
@@ -765,6 +853,45 @@ def run_load_checkpoint(
         int: the previously-serialized number of iterations.
     """
     return load_checkpoint(src, model, optimizer)
+
+
+def get_kv_cache(
+    num_layers: int,
+    batch_size: int,
+    num_kv_heads: int,
+    max_seq_len: int,
+    d_head: int,
+    device: torch.device,
+    dtype: torch.dtype,
+) -> Any:
+    """Create an empty KV cache with the public interface in kv_cache.py.
+
+    Args:
+        num_layers: Number of independent Transformer layers.
+        batch_size: Number of sequences in the batch.
+        num_kv_heads: Number of key/value heads per layer.
+        max_seq_len: Token capacity of each layer.
+        d_head: Number of elements in each key/value vector.
+        device: Storage device.
+        dtype: Storage data type.
+
+    Returns:
+        A cache with get, append, get_length, and clear operations.
+        Each layer initially has length zero. Public behavior follows the
+        KVCache method specifications; internal fields are not part of this
+        adapter's interface.
+    """
+    from cs336_basics.kv_cache import KVCache
+
+    return KVCache(
+        num_layers=num_layers,
+        batch_size=batch_size,
+        num_kv_heads=num_kv_heads,
+        max_seq_len=max_seq_len,
+        d_head=d_head,
+        device=device,
+        dtype=dtype,
+    )
 
 
 def get_tokenizer(
